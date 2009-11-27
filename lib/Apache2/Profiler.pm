@@ -1,55 +1,68 @@
-package Apache::Profiler;
+package Apache2::Profiler;
 
 use strict;
 
-use Apache::Log;
+use mod_perl2 1.999022;
+use Apache2::Log;
+use Apache2::RequestRec;
+use Apache2::RequestUtil;
+use APR::Pool;
 use Time::HiRes qw(gettimeofday);
 
 our $VERSION = '0.10';
 
 sub handler {
     my $r = shift;
-    $r->pnotes(ap_start_time => scalar gettimeofday());
-    $r->register_cleanup(\&compute);
+
+    my $start_time = gettimeofday();
+
+    $r->pool->cleanup_register(\&compute, [$r, $start_time]);
 }
 
 sub compute {
-    my $r    = shift;
+    my ($r, $start_time) = (@_ && ref $_[0] eq 'ARRAY' ? @{ +shift } : @_);
+
+    return unless defined $start_time;
+
     my $now  = gettimeofday();
-    my $diff = $now - $r->pnotes('ap_start_time');
+    my $diff = $now - $start_time;
 
     my $threshold = $r->dir_config('ProfileLongerThan') || 0;
     if ($diff >= $threshold) {
         my $uri   = $r->uri;
-        my $query = $r->query_string;
-        if ($query) { $uri .= "?$query" }
+
+        # handle query string
+        if (my $query = $r->args) {
+            $uri .= "?$query";
+        }
+
         $r->log->notice("uri: $uri takes $diff seconds");
     }
 }
 
 1;
+
 __END__
 
 =head1 NAME
 
-Apache::Profiler - profiles time seconds needed for every request
+Apache2::Profiler - profiles time seconds needed for every request
 
 =head1 SYNOPSIS
 
   <Location /cgi-bin>
-  PerlInitHandler Apache::Profiler
+  PerlInitHandler Apache2::Profiler
   </Location>
 
 =head1 DESCRIPTION
 
-Apache::Profiler is a mod_perl init (and cleanup) handler to profile
-time taken to process one request. Profiled data is reported to the
-Apache Log file. It'd be useful to profile some heavy application
-taking a long time to proceed.
+Apache2::Profiler is a mod_perl init (and cleanup) handler to profile time
+taken to process one request. Profiled data is reported to the
+Apache Log file. It'd be useful to profile some heavy application taking a long
+time to proceed.
 
-Apache::Profiler is for C<mod_perl> version 1.x.  If you have C<mod_perl>
-version 2.0 or later, you need Apache2::Profiler, which  is included in this
-distribution, instead.
+Apache2::Profiler is for C<mod_perl> version 2.0 or later.  If you are using
+C<mod_perl> version 1.x, you need Apache::Profiler instead.
 
 It uses L<Time::HiRes> to take milliseconds, and outputs profiled data
 as Apache log C<notice> level like:
@@ -64,9 +77,9 @@ as Apache log C<notice> level like:
 
   PerlSetVar ProfileLongerThan 0.5
 
-specifies lower limit of request time taken to profile. This example
-only logs requests which takes longer than 0.5 seconds. This value is
-set to 0 by default, which means it logs all requests.
+specifies lower limit of request time taken to profile. This example only logs
+requests which takes longer than 0.5 seconds. This value is set to 0 by
+default, which means it logs all requests.
 
 =back
 
@@ -128,6 +141,6 @@ the Artistic License version 2.0.
 
 =head1 SEE ALSO
 
-L<Apache2::Profiler>, L<Time::HiRes>
+L<Apache::Profiler>, L<Time::HiRes>
 
 =cut
